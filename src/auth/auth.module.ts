@@ -12,13 +12,14 @@ import { UsersModule } from '@/users/users.module';
   imports: [
     UsersModule,
     JwtModule.registerAsync({
-      useFactory: async (configService: ConfigService) => ({
-        global: true,
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: {
-          expiresIn: configService.get<string>('JWT_ACCESS_TOKEN_EXPIRED'),
-        },
-      }),
+      useFactory: (configService: ConfigService) =>
+        Promise.resolve({
+          global: true,
+          secret: configService.get<string>('JWT_SECRET'),
+          signOptions: {
+            expiresIn: configService.get<string>('JWT_ACCESS_TOKEN_EXPIRED'),
+          },
+        }),
       inject: [ConfigService],
     }),
     PassportModule,

@@ -14,14 +14,17 @@ export class LoginDto {
 }
 
 export class CreateAuthDto {
+  @ApiProperty({ example: 'example@gmail.com' })
   @IsNotEmpty({ message: 'email không được để trống' })
   email: string;
 
+  @ApiProperty({ example: 'password123' })
   @IsNotEmpty({ message: 'password không được để trống' })
   password: string;
 
+  @ApiProperty({ example: 'Hoa Tran' })
   @IsOptional()
-  name: string;
+  full_name: string;
 }
 
 export class CodeAuthDto {

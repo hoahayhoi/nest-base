@@ -10,28 +10,215 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // url      = "postgresql://nestuser:nestpassword@localhost:5432/nestdb?schema=public"
+  url      = "postgresql://postgres:NewPassw0rd!@database-kv.cf6kg62qobyx.us-east-2.rds.amazonaws.com:5432/devdb"
 }
 
 model User {
-  id           Int     @default(autoincrement()) @id
-  email        String  @unique
-  name         String?
-  password     String
-  phone        String?
-  address      String?
-  image        String?
-  role         String  @default("USER")
-  accountType  String  @default("LOCAL")
-  isActive     Boolean @default(false)
-  posts        Post[]
+  id            Int     @id @default(autoincrement()) // Mã định danh người dùng
+  full_name     String  // Họ và tên người dùng
+  email         String  @unique // Địa chỉ email
+  password      String  // Mật khẩu (được hash)
+  avatar_url    String? // URL hình đại diện
+  account_type  String  @default("local") // "local" hoặc "google"
+  role          String  @default("customer") // "customer", "staff", "manager", "admin"
+  branch_id     Int?    // Mã chi nhánh, có thể để trống nếu không thuộc chi nhánh nào
+
+  branch        Branch? @relation(fields: [branch_id], references: [id])
+  addresses     UserAddress[] // Một User có thể có nhiều địa chỉ
+  customer      Customer? // Nếu là khách hàng thì sẽ có bản ghi trong Customer
+  staff         Staff? // Nếu là nhân viên thì sẽ có bản ghi trong Staff
+  devices       Device[] // Một User có thể có nhiều thiết bị
+  user_notifications UserNotification[]
 }
 
-model Post {
-  id        Int      @default(autoincrement()) @id
-  title     String
-  content   String?
-  published Boolean? @default(false)
-  author    User?    @relation(fields: [authorId], references: [id])
-  authorId  Int?
+model Branch {
+  id       Int     @id @default(autoincrement()) // Mã chi nhánh
+  name     String  // Tên chi nhánh
+
+  // Quan hệ với User (một chi nhánh có nhiều người dùng)
+  users    User[]
+  @@map("branches") // Đặt tên bảng theo chuẩn PostgreSQL
 }
+
+model UserAddress {
+  id         Int    @id @default(autoincrement()) // Mã định danh địa chỉ
+  user_id    Int    // Mã định danh người dùng
+  phone      String // Số điện thoại liên hệ
+  address    String // Địa chỉ của người dùng
+
+  // Liên kết với User (một người dùng có nhiều địa chỉ)
+  user       User   @relation(fields: [user_id], references: [id])
+  appointment Appointment[]
+
+  @@map("user_addresses") // Đặt tên bảng theo chuẩn PostgreSQL
+}
+
+model Customer {
+  id       Int   @id @default(autoincrement()) // Mã định danh khách hàng
+  user_id  Int   @unique // Liên kết với User
+
+  user     User  @relation(fields: [user_id], references: [id])
+
+  service_orders ServiceOrder[]
+  reviews  Review[]
+  @@map("customers") // Đặt tên bảng theo chuẩn PostgreSQL
+}
+
+model Staff {
+  id       Int   @id @default(autoincrement()) // Mã định danh nhân viên
+  user_id  Int   @unique // Liên kết với User
+
+  user     User  @relation(fields: [user_id], references: [id])
+
+  service_orders ServiceOrder[]
+  @@map("staffs") // Đặt tên bảng theo chuẩn PostgreSQL
+}
+
+model ServiceType {
+  id       Int   @id @default(autoincrement()) 
+  name     String  
+
+  services ServiceServiceType[] // Liên kết với bảng trung gian
+
+  @@map("service_types") // Đặt tên bảng theo chuẩn PostgreSQL
+}
+
+model Service {
+  id       Int   @id @default(autoincrement()) 
+  name     String  
+
+  service_types ServiceServiceType[] // Liên kết với bảng trung gian
+  service_order_details ServiceOrderDetail[]
+  @@map("services") // Đặt tên bảng theo chuẩn PostgreSQL
+}
+
+model ServiceServiceType {
+  service_id      Int
+  service_type_id Int
+
+  service        Service     @relation(fields: [service_id], references: [id])
+  service_type   ServiceType @relation(fields: [service_type_id], references: [id])
+
+  @@id([service_id, service_type_id]) // Khóa chính tổng hợp
+  @@map("service_service_types") // Đặt tên bảng theo chuẩn PostgreSQL
+}
+
+model ServiceOrder {
+  id           Int      @id @default(autoincrement()) // Mã định danh đơn hàng
+  customer_id      Int      // Mã khách hàng đặt dịch vụ
+  order_date   DateTime @default(now()) // Ngày khách hàng đặt lịch
+  staff_id     Int?     // Mã nhân viên phụ trách (có thể không có)
+
+  customer  Customer  @relation(fields: [customer_id], references: [id]) // Liên kết với khách hàng
+  staff     Staff?    @relation(fields: [staff_id], references: [id]) // Liên kết với nhân viên xử lý
+  details ServiceOrderDetail[] // Chi tiết đơn hàng
+  
+
+  @@map("service_orders") // Đặt tên bảng theo chuẩn PostgreSQL
+}
+
+model ServiceOrderDetail {
+  id           Int      @id @default(autoincrement()) // Mã định danh chi tiết đơn hàng
+  order_id   Int  // Mã định danh đơn hàng
+  service_id Int  // Loại dịch vụ được chọn
+  status     String @default("pending") // Trạng thái đơn hàng: pending, in-progress, completed, cancelled
+
+  order   ServiceOrder @relation(fields: [order_id], references: [id])
+  service Service      @relation(fields: [service_id], references: [id])
+  reviews Review? // Liên kết với bảng đánh giá
+
+  appointment     Appointment?    
+  
+  @@map("service_order_details") // Đặt tên bảng theo chuẩn PostgreSQL
+}
+
+model Review {
+  id          Int      @id @default(autoincrement()) // Mã đánh giá
+  order_detail_id    Int   @unique   // Mã chi tiết đơn hàng
+  customer_id     Int      // Mã khách hàng đánh giá
+  rating      Int      // Số sao đánh giá (1-5)
+  message     String?  // Thông điệp của khách hàng
+  media_urls  String[] // Danh sách URL hình ảnh hoặc video
+
+  order ServiceOrderDetail @relation(fields: [order_detail_id], references: [id])
+
+  customer  Customer @relation(fields: [customer_id], references: [id])
+
+  @@map("reviews") // Đặt tên bảng theo chuẩn PostgreSQL
+}
+
+model Appointment {
+  id               Int      @id @default(autoincrement()) // Mã định danh lịch hẹn
+  order_detail_id  Int      @unique // Mã chi tiết đơn hàng liên kết với lịch hẹn
+  scheduled_date   DateTime // Ngày hẹn sửa chữa
+  scheduled_time   String   // Giờ hẹn sửa chữa (Lưu dưới dạng chuỗi HH:mm)
+  status           String   @default("pending") // Trạng thái lịch hẹn: pending, confirmed, completed, canceled
+  customer_address Int 
+  customer_note    String?  // Ghi chú của khách hàng (nếu có)
+  employee_note    String?  // Ghi chú của nhân viên (nếu có)
+
+  orderDetail ServiceOrderDetail @relation(fields: [order_detail_id], references: [id]) // Liên kết với chi tiết đơn hàng
+  user_address   UserAddress @relation(fields: [customer_address], references: [id])
+
+  @@map("appointments") // Đặt tên bảng theo chuẩn PostgreSQL
+}
+
+model Device {
+  device_id    Int      @id @default(autoincrement())
+  userID       Int      
+  device_token String   @unique
+  device_type  String   
+  os_version   String   
+  app_version  String   
+  status       String   @default("active")
+  created_at   DateTime @default(now())
+
+  // Mối quan hệ với bảng Users
+  user         User     @relation(fields: [userID], references: [id])
+
+  // Mối quan hệ với UserNotification
+  notifications UserNotification[] 
+
+  @@map("devices")
+}
+
+model UserNotification {
+  id              Int      @id @default(autoincrement())
+  customerID      Int      
+  notification_id Int      
+  device_id       Int      
+  delivered_at    DateTime?
+  read_at         DateTime?
+  status          String   @default("pending")
+
+  // Mối quan hệ với bảng Users
+  user            User        @relation(fields: [customerID], references: [id])
+  
+  // Mối quan hệ với bảng Notifications
+  notification    Notification @relation(fields: [notification_id], references: [notification_id])
+  
+  // Mối quan hệ với bảng Devices
+  device         Device       @relation(fields: [device_id], references: [device_id])
+
+  @@map("user_notifications")
+}
+
+model Notification {
+  notification_id Int      @id @default(autoincrement())
+  title          String
+  message        String
+  image_url      String?  
+  action_url     String?  
+  sent_by        Int      @default(0)
+  status         String   @default("pending")
+  created_at     DateTime @default(now())
+
+  // Mối quan hệ với UserNotification
+  user_notifications UserNotification[]
+
+  @@map("notifications")
+}
+
+
+

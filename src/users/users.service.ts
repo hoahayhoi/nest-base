@@ -16,6 +16,10 @@ import { CodeAuthDto, CreateAuthDto } from '@/auth/dto/create-auth.dto';
 import { v4 as uuidv4 } from 'uuid';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
+import {
+  CreateUserAddressDto,
+  DeleteUserAddressDto,
+} from './dto/add-address.dto';
 
 const paginate: PaginatorTypes.PaginateFunction = paginator({
   page: 1,
@@ -43,24 +47,22 @@ export class UsersService {
 
     // Chuyển đổi `where` từ string thành Prisma.UserWhereInput
     const prismaWhere: Prisma.UserWhereInput | undefined = where
-      ? { name: { contains: where, mode: 'insensitive' } } // Tìm user theo tên
+      ? { full_name: { contains: where, mode: 'insensitive' } } // Tìm user theo tên
       : undefined;
 
     // Chọn các trường cần trả về
     const selectFields: Prisma.UserSelect = {
       id: true,
-      name: true,
+      full_name: true,
       email: true,
-      phone: true,
-      address: true,
-      image: true,
+      avatar_url: true,
     };
 
     return paginate(
       this.prisma.user,
       {
         where: prismaWhere,
-        orderBy: orderKey ? { [orderKey]: orderValue } : { name: 'asc' },
+        orderBy: orderKey ? { [orderKey]: orderValue } : { full_name: 'asc' },
         select: selectFields,
       },
       {
@@ -91,10 +93,8 @@ export class UsersService {
       select: {
         id: true,
         email: true,
-        name: true,
-        address: true,
-        phone: true,
-        image: true,
+        full_name: true,
+        avatar_url: true,
       },
     });
   }
@@ -106,10 +106,8 @@ export class UsersService {
       select: {
         id: true,
         email: true,
-        name: true,
-        address: true,
-        phone: true,
-        image: true,
+        full_name: true,
+        avatar_url: true,
       },
     });
   }
@@ -178,7 +176,7 @@ export class UsersService {
       select: {
         id: true,
         email: true,
-        name: true,
+        full_name: true,
       },
     });
 
@@ -191,7 +189,7 @@ export class UsersService {
       subject: 'Activate your account at HoaTran', // Subject line
       template: 'register',
       context: {
-        name: user?.name ?? user.email,
+        name: user?.full_name ?? user.email,
         activationCode: codeId,
       },
     });
@@ -201,25 +199,66 @@ export class UsersService {
     };
   }
 
-  async handleActive(data: CodeAuthDto) {
-    const value = await this.cacheManager.get(`register-${data.id}`);
+  async createUserAddress(data: CreateUserAddressDto) {
+    // Lấy danh sách địa chỉ của user từ database
+    const userAddresses = await this.getUserAddresses(data.id);
+    // Kiểm tra nếu đã có 3 địa chỉ thì không cho thêm mới
+    if (userAddresses.length >= 3) {
+      throw new BadRequestException(
+        'Người dùng chỉ có thể có tối đa 3 địa chỉ.',
+      );
+    }
+    // Kiểm tra xem địa chỉ mới có bị trùng với địa chỉ đã có không
+    const isDuplicate = userAddresses.some(
+      (address) =>
+        address.address === data.address && address.phone === data.phone,
+    );
 
-    if (!value) {
-      throw new BadRequestException('Mã code không hợp lệ hoặc đã hết hạn');
+    if (isDuplicate) {
+      throw new BadRequestException(`Địa chỉ và số điện thoại đã tồn tại!.`);
     }
 
-    // Check code
-    const isValidCode = value == data.code ? true : false;
-    if (!isValidCode) {
-      throw new BadRequestException('Mã code không hợp lệ hoặc đã hết hạn');
+    await this.prisma.userAddress.create({
+      data: {
+        user_id: data.id,
+        phone: data.phone,
+        address: data.address,
+      },
+    });
+    return { message: 'Thêm địa chỉ thành công!' };
+  }
+
+  async deleteUserAddress(data: DeleteUserAddressDto) {
+    // Kiểm tra xem địa chỉ có tồn tại và thuộc về user không
+    const address = await this.prisma.userAddress.findUnique({
+      where: { id: data.id },
+    });
+
+    if (!address || address.user_id !== data.userId) {
+      throw new BadRequestException(
+        'Địa chỉ không tồn tại hoặc không thuộc về người dùng.',
+      );
     }
 
-    // Cập nhật thuộc tính isActive = true của user
-    await this.updatePartial(Number(data.id), { isActive: true });
+    // Xoá địa chỉ
+    await this.prisma.userAddress.delete({
+      where: { id: data.id },
+    });
 
-    // Xóa mã code trong cache
-    await this.cacheManager.del(`register-${data.id}`);
+    return { message: 'Đã xoá địa chỉ thành công!' };
+  }
 
-    return { message: 'Kích hoạt tài khoản thành công!' };
+  async getUserAddresses(userId: number) {
+    // Lấy danh sách tất cả các địa chỉ của user từ database
+    const userAddresses = await this.prisma.userAddress.findMany({
+      where: { user_id: userId },
+    });
+
+    // Nếu user không có địa chỉ nào, có thể trả về thông báo hoặc danh sách rỗng
+    if (!userAddresses.length) {
+      throw new NotFoundException('Người dùng chưa có địa chỉ nào.');
+    }
+
+    return userAddresses;
   }
 }

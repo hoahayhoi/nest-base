@@ -7,6 +7,5 @@ export class UpdateUserDto extends PartialType(
     'password',
     'role',
     'accountType',
-    'isActive',
   ] as const),
 ) {}

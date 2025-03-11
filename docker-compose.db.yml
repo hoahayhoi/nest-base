@@ -3,60 +3,51 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15
-    container_name: nest_postgres
+    container_name: nest_postgres_1
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     ports:
-      - "5432:5432"
+      - '5433:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_1:/var/lib/postgresql/data
     networks:
       - nest_network
 
   redis:
     image: redis:alpine
-    container_name: nest_redis
+    container_name: nest_redis_1
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - '6380:6379'
     volumes:
-      - redis_data:/data
+      - redis_data_1:/data
     networks:
       - nest_network
 
   pgadmin:
     image: dpage/pgadmin4
-    container_name: nest_pgadmin
+    container_name: nest_pgadmin_1
     restart: unless-stopped
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
     ports:
-      - "5050:80"
+      - '5051:80'
+    volumes:
+      - pgadmin_data_1:/var/lib/pgadmin
     depends_on:
       - postgres
     networks:
       - nest_network
 
-  # app:
-  #   build: .
-  #   container_name: nest_app
-  #   restart: unless-stopped
-  #   env_file: .env
-  #   ports:
-  #     - "3000:3000"
-  #   depends_on:
-  #     - postgres
-  #     - redis
-  #   networks:
-  #     - nest_network
-
 volumes:
-  postgres_data:
-  redis_data:
+  postgres_data_1:
+  redis_data_1:
+  pgadmin_data_1:
 
 networks:
   nest_network:
+    external: true
